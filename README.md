@@ -1,10 +1,12 @@
-# fl-studio
+# Foundry Local Studio (inoffical)
 
-An Electron application with React and TypeScript — a desktop GUI for [Foundry Local](https://learn.microsoft.com/azure/ai-foundry/foundry-local/).
+When running AI models on your local machine - everybody thinks of [ollama](https://ollama.com/) or [LM Studio](https://lmstudio.ai/) first. This serves everybody from AI-consumer, hobbyist to developer.
+Microsoft [Foundry Local](https://learn.microsoft.com/azure/ai-foundry/foundry-local/) on the other hand is the versatile local AI SDK platform developers use to embed local AI capabilities into their cross-plattform apps.
 
-## Recommended IDE Setup
+But why not building a simple GUI around Foundry Local to expose its capabilities, the model catalogue, the local hardware acceleration and the OpenAI compatible API for easier testing and using it as local model runner more easily.
 
-- [VSCode](https://code.visualstudio.com/) + [ESLint](https://marketplace.visualstudio.com/items?itemName=dbaeumer.vscode-eslint) + [Prettier](https://marketplace.visualstudio.com/items?itemName=esbenp.prettier-vscode)
+This is considered a Proof of conecpt and is built on the Electron application framework with React and TypeScript — a desktop GUI for .
+
 
 ## Requirements
 
