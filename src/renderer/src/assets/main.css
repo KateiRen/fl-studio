@@ -148,6 +148,15 @@ pre {
   margin-bottom: 20px;
 }
 
+.model-usage-summary {
+  margin-top: -4px;
+  margin-bottom: 12px;
+}
+
+.model-usage-summary strong {
+  color: var(--ev-c-text-1);
+}
+
 .model-category-heading {
   margin: 0 0 8px;
   font-size: 14px;

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { EpStatus, ModelSummary } from '@shared/types'
-import ModelCard from '../components/ModelCard'
+import ModelCard, { formatSize } from '../components/ModelCard'
 import { MODEL_CATEGORY_LABELS, getModelCategory } from '../modelCategories'
 import type { ModelCategory } from '../modelCategories'
 
@@ -66,6 +66,17 @@ function ManageModelsView(): React.JSX.Element {
     )
   }, [cachedModels])
 
+  // Totals are computed from the full model list (not the search-filtered
+  // cachedModels) so the summary doesn't change while the user is typing.
+  const diskUsageMb = useMemo(
+    () => models.filter((m) => m.cached).reduce((sum, m) => sum + (m.fileSizeMb ?? 0), 0),
+    [models]
+  )
+  const memoryUsageMb = useMemo(
+    () => models.filter((m) => m.loaded).reduce((sum, m) => sum + (m.fileSizeMb ?? 0), 0),
+    [models]
+  )
+
   // Same rules as the Catalog tab: CPU is the universal fallback (never
   // "recommended"), accelerator variants need their EP registered to load.
   function matchesHardware(m: ModelSummary): boolean {
@@ -116,6 +127,10 @@ function ManageModelsView(): React.JSX.Element {
       <p className="muted">
         Models you&apos;ve already downloaded. Load, unload, or delete them here — use the Catalog
         tab to download more.
+      </p>
+      <p className="muted model-usage-summary">
+        Disk space used: <strong>{formatSize(diskUsageMb)}</strong> · Memory used by loaded models:{' '}
+        <strong>{formatSize(memoryUsageMb)}</strong>
       </p>
 
       <input
