@@ -6,12 +6,29 @@ import type {
   ChatSendRequest,
   DownloadProgressEvent,
   ChatChunkEvent,
-  EpRegisterProgressEvent
+  EpRegisterProgressEvent,
+  TranscribeSendRequest,
+  TranscribeChunkEvent
 } from '@shared/types'
 
 const activeDownloads = new Map<string, AbortController>()
 const activeChats = new Map<string, AbortController>()
 const activeEpRegistrations = new Map<string, AbortController>()
+const activeTranscriptions = new Map<string, AbortController>()
+
+/** Flattens a chat message's content (plain text, or multimodal text+image parts) to plain text. */
+function contentToText(content: ChatSendRequest['messages'][number]['content']): string {
+  if (typeof content === 'string') return content
+  return content
+    .filter((part) => part.type === 'text')
+    .map((part) => part.text)
+    .join('\n')
+}
+
+/** True if a message's content includes an image part. */
+function hasImageContent(content: ChatSendRequest['messages'][number]['content']): boolean {
+  return Array.isArray(content) && content.some((part) => part.type === 'image_url')
+}
 
 export function registerIpcHandlers(getWindow: () => BrowserWindow | null): void {
   const send = (channel: string, payload: unknown): void => {
@@ -91,27 +108,50 @@ export function registerIpcHandlers(getWindow: () => BrowserWindow | null): void
   ipcMain.handle('chat:send', async (_event, request: ChatSendRequest) => {
     const { requestId, conversationId, modelId, messages, settings, embedModelId } = request
 
+    // The installed foundry-local-sdk has no vision/image support in any client
+    // (ChatClient and ResponsesClient both require plain string content) - fail
+    // fast with a clear message instead of letting the SDK's own generic
+    // validation error surface as a confusing IPC failure.
+    if (messages.some((m) => hasImageContent(m.content))) {
+      throw new Error(
+        'Image attachments are not supported by the local model runtime (the installed Foundry Local SDK only accepts plain text message content). Remove the attached image and ask a text-only question.'
+      )
+    }
+
     const lastUserMessage = messages[messages.length - 1]
     if (lastUserMessage?.role === 'user') {
-      db.appendMessage(conversationId, 'user', lastUserMessage.content)
+      db.appendMessage(conversationId, 'user', contentToText(lastUserMessage.content))
     }
 
     let promptMessages = messages
+    let ragWarning: string | undefined
     if (embedModelId && lastUserMessage?.role === 'user') {
       try {
-        const chunks = await rag.retrieve(conversationId, lastUserMessage.content, embedModelId)
+        const chunks = await rag.retrieve(
+          conversationId,
+          contentToText(lastUserMessage.content),
+          embedModelId
+        )
         if (chunks.length > 0) {
           const context = chunks
             .map((c) => `From "${c.documentName}":\n${c.text}`)
             .join('\n\n---\n\n')
           const contextMessage = {
             role: 'system' as const,
-            content: `Use the following document excerpts to help answer the user's next message if relevant:\n\n${context}`
+            content: `Use the following document excerpts to answer the user's next message. Rely only on this content when it's relevant; if it doesn't contain the answer, say so.\n\n${context}`
           }
-          promptMessages = [...messages.slice(0, -1), contextMessage, lastUserMessage]
+          // Put the context message first, not just before the latest user turn:
+          // many local SLMs apply a fixed system/user/assistant prompt template
+          // that only recognizes a system message in the leading position, so a
+          // system message injected mid-history can be silently dropped from the
+          // rendered prompt.
+          promptMessages = [contextMessage, ...messages]
         }
       } catch (error) {
-        // Retrieval failures shouldn't block the chat; continue without context.
+        // Retrieval failures shouldn't block the chat; continue without context,
+        // but surface it so it doesn't look like the model silently ignored the
+        // document.
+        ragWarning = error instanceof Error ? error.message : String(error)
         console.error('RAG retrieval failed:', error)
       }
     }
@@ -119,9 +159,16 @@ export function registerIpcHandlers(getWindow: () => BrowserWindow | null): void
     const controller = new AbortController()
     activeChats.set(requestId, controller)
     try {
+      // Defense in depth: the SDK's native chat client hard-requires every
+      // message's content to be a plain non-empty string, so normalize here
+      // even though `hasImageContent` already rejected image parts above.
+      const flatMessages = promptMessages.map((m) => ({
+        role: m.role,
+        content: contentToText(m.content)
+      }))
       const full = await foundry.streamChat(
         modelId,
-        promptMessages,
+        flatMessages,
         settings,
         (delta) => {
           const payload: ChatChunkEvent = { requestId, delta, done: false }
@@ -135,7 +182,7 @@ export function registerIpcHandlers(getWindow: () => BrowserWindow | null): void
         done: true,
         stopped: controller.signal.aborted
       } satisfies ChatChunkEvent)
-      return { ok: true, content: full }
+      return { ok: true, content: full, ragWarning }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
       send('chat:chunk', { requestId, done: true, error: message } satisfies ChatChunkEvent)
@@ -147,6 +194,46 @@ export function registerIpcHandlers(getWindow: () => BrowserWindow | null): void
 
   ipcMain.handle('chat:stop', (_event, requestId: string) => {
     activeChats.get(requestId)?.abort()
+    return { ok: true }
+  })
+
+  // --- Embeddings ---
+  ipcMain.handle('embed:generate', (_event, modelId: string, texts: string[]) =>
+    foundry.embedTexts(modelId, texts)
+  )
+
+  // --- Audio transcription ---
+  ipcMain.handle('audio:transcribe', async (_event, request: TranscribeSendRequest) => {
+    const { requestId, modelId, filePath } = request
+    const controller = new AbortController()
+    activeTranscriptions.set(requestId, controller)
+    try {
+      const full = await foundry.transcribeAudio(
+        modelId,
+        filePath,
+        (delta) => {
+          const payload: TranscribeChunkEvent = { requestId, delta, done: false }
+          send('audio:chunk', payload)
+        },
+        controller.signal
+      )
+      send('audio:chunk', {
+        requestId,
+        done: true,
+        stopped: controller.signal.aborted
+      } satisfies TranscribeChunkEvent)
+      return { ok: true, text: full }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      send('audio:chunk', { requestId, done: true, error: message } satisfies TranscribeChunkEvent)
+      throw error
+    } finally {
+      activeTranscriptions.delete(requestId)
+    }
+  })
+
+  ipcMain.handle('audio:stop', (_event, requestId: string) => {
+    activeTranscriptions.get(requestId)?.abort()
     return { ok: true }
   })
 

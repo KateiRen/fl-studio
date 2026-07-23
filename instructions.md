@@ -1,9 +1,10 @@
 # FL Studio
 
-This was an afternoon of vibe coding for curiosity. Is it possible to create a simple, modern and user friendly GUI around Microsoft Foundry Local to make it accessible not only in a developer setups and shipped applications, but let it stand as its own application to 
+This was an afternoon of vibe coding for curiosity. Is it possible to create a simple, modern and user friendly GUI around Microsoft Foundry Local to make it accessible not only in a developer setups and shipped applications, but let it stand as its own application? The idea was to make it 
 - visually browse the model catalogue
 - evaluate and show available execution provider on the current machine
-- load and test models from the catalogue with an easy chat mode and RAG mode for documents.
+- load and test models from the catalogue with an easy chat mode and RAG mode for documents
+- expose the OpenAI API for other AI clients to connect to the local engine
 
 
 

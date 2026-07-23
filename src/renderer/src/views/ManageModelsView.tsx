@@ -1,6 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { EpStatus, ModelSummary } from '@shared/types'
 import ModelCard from '../components/ModelCard'
+import { MODEL_CATEGORY_LABELS, getModelCategory } from '../modelCategories'
+import type { ModelCategory } from '../modelCategories'
+
+const CATEGORY_ORDER: ModelCategory[] = ['chat', 'embedding', 'transcription']
 
 /**
  * Lists only the models that are already downloaded (cached) locally, so the
@@ -13,6 +17,7 @@ function ManageModelsView(): React.JSX.Element {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [search, setSearch] = useState('')
+  const [loadingModelId, setLoadingModelId] = useState<string | null>(null)
 
   const refreshModels = useCallback(async () => {
     const list = await window.api.foundry.listModels()
@@ -48,6 +53,19 @@ function ManageModelsView(): React.JSX.Element {
     })
   }, [models, search])
 
+  const groupedModels = useMemo(() => {
+    const groups = new Map<ModelCategory, ModelSummary[]>()
+    for (const m of cachedModels) {
+      const category = getModelCategory(m)
+      const group = groups.get(category)
+      if (group) group.push(m)
+      else groups.set(category, [m])
+    }
+    return CATEGORY_ORDER.map((category) => ({ category, models: groups.get(category) ?? [] })).filter(
+      (g) => g.models.length > 0
+    )
+  }, [cachedModels])
+
   // Same rules as the Catalog tab: CPU is the universal fallback (never
   // "recommended"), accelerator variants need their EP registered to load.
   function matchesHardware(m: ModelSummary): boolean {
@@ -63,11 +81,14 @@ function ManageModelsView(): React.JSX.Element {
   }
 
   async function handleLoad(modelId: string): Promise<void> {
+    setLoadingModelId(modelId)
     try {
       await window.api.foundry.loadModel(modelId)
       await refreshModels()
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setLoadingModelId(null)
     }
   }
 
@@ -106,23 +127,29 @@ function ManageModelsView(): React.JSX.Element {
       {error && <div className="error-banner">{error}</div>}
       {loading && <p className="muted">Loading…</p>}
 
-      <div className="model-grid">
-        {cachedModels.map((m) => (
-          <ModelCard
-            key={m.id}
-            model={m}
-            matchesHardware={matchesHardware(m)}
-            loadable={isLoadable(m)}
-            onDownload={() => {}}
-            onLoad={handleLoad}
-            onUnload={handleUnload}
-            onDelete={handleDelete}
-          />
-        ))}
-        {!loading && cachedModels.length === 0 && (
-          <p className="muted">No downloaded models yet. Go to the Catalog tab to download one.</p>
-        )}
-      </div>
+      {groupedModels.map(({ category, models: groupModels }) => (
+        <section key={category} className="model-category-group">
+          <h3 className="model-category-heading">{MODEL_CATEGORY_LABELS[category]}</h3>
+          <div className="model-grid">
+            {groupModels.map((m) => (
+              <ModelCard
+                key={m.id}
+                model={m}
+                matchesHardware={matchesHardware(m)}
+                loadable={isLoadable(m)}
+                isLoading={loadingModelId === m.id}
+                onDownload={() => {}}
+                onLoad={handleLoad}
+                onUnload={handleUnload}
+                onDelete={handleDelete}
+              />
+            ))}
+          </div>
+        </section>
+      ))}
+      {!loading && cachedModels.length === 0 && (
+        <p className="muted">No downloaded models yet. Go to the Catalog tab to download one.</p>
+      )}
     </div>
   )
 }

@@ -4,6 +4,7 @@ interface Props {
   model: ModelSummary
   matchesHardware: boolean
   loadable: boolean
+  isLoading?: boolean
   downloadProgress?: number
   onDownload: (modelId: string) => void
   onLoad: (modelId: string) => void
@@ -21,6 +22,7 @@ function ModelCard({
   model,
   matchesHardware,
   loadable,
+  isLoading,
   downloadProgress,
   onDownload,
   onLoad,
@@ -53,7 +55,9 @@ function ModelCard({
           </div>
         )}
         {model.cached && !model.loaded && loadable && (
-          <button onClick={() => onLoad(model.id)}>Load</button>
+          <button disabled={isLoading} onClick={() => onLoad(model.id)}>
+            {isLoading ? 'Loading…' : 'Load'}
+          </button>
         )}
         {model.loaded && (
           <>

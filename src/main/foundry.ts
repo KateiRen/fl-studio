@@ -25,6 +25,7 @@ const modelCache = new Map<string, IModel>()
 // One ChatClient per loaded model id, reused across messages in a session.
 const chatClientCache = new Map<string, ReturnType<IModel['createChatClient']>>()
 const embeddingClientCache = new Map<string, ReturnType<IModel['createEmbeddingClient']>>()
+const audioClientCache = new Map<string, ReturnType<IModel['createAudioClient']>>()
 
 async function getManager(): Promise<FoundryLocalManager> {
   if (!managerPromise) {
@@ -51,7 +52,9 @@ function toSummary(model: IModel, loadedIds: Set<string>): ModelSummary {
     cached: model.isCached,
     loaded: loadedIds.has(model.id),
     supportsToolCalling: info.supportsToolCalling ?? null,
-    contextLength: info.contextLength ?? null
+    contextLength: info.contextLength ?? null,
+    inputModalities: info.inputModalities ?? null,
+    outputModalities: info.outputModalities ?? null
   }
 }
 
@@ -151,6 +154,7 @@ export async function unloadModel(id: string): Promise<void> {
   await model.unload()
   chatClientCache.delete(id)
   embeddingClientCache.delete(id)
+  audioClientCache.delete(id)
 }
 
 /** Removes a model from the local cache, unloading it first if it's currently loaded. */
@@ -160,6 +164,7 @@ export async function deleteModel(id: string): Promise<void> {
     await model.unload()
     chatClientCache.delete(id)
     embeddingClientCache.delete(id)
+    audioClientCache.delete(id)
   }
   model.removeFromCache()
 }
@@ -219,6 +224,39 @@ export async function embedTexts(modelId: string, texts: string[]): Promise<numb
   const client = getEmbeddingClient(model)
   const response = await client.generateEmbeddings(texts)
   return response.data.map((entry: { embedding: number[] }) => entry.embedding)
+}
+
+function getAudioClient(model: IModel): ReturnType<IModel['createAudioClient']> {
+  let client = audioClientCache.get(model.id)
+  if (!client) {
+    client = model.createAudioClient()
+    audioClientCache.set(model.id, client)
+  }
+  return client
+}
+
+/** Streams a transcription of the given local audio file, invoking onDelta for every text fragment.
+ *  Returns the full transcript. If `signal` is aborted mid-stream, stops consuming further chunks and
+ *  returns whatever text was transcribed so far. */
+export async function transcribeAudio(
+  modelId: string,
+  audioFilePath: string,
+  onDelta: (delta: string) => void,
+  signal?: AbortSignal
+): Promise<string> {
+  const model = await getModelById(modelId)
+  const client = getAudioClient(model)
+
+  let full = ''
+  for await (const chunk of client.transcribeStreaming(audioFilePath)) {
+    if (signal?.aborted) break
+    const delta = chunk?.text
+    if (delta) {
+      full += delta
+      onDelta(delta)
+    }
+  }
+  return full
 }
 
 export async function startServer(): Promise<ServerStatus> {

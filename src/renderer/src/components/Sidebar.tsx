@@ -1,4 +1,4 @@
-export type ViewId = 'catalog' | 'manage' | 'chat' | 'server'
+export type ViewId = 'catalog' | 'manage' | 'chat' | 'embeddings' | 'transcribe' | 'server'
 
 interface Props {
   active: ViewId
@@ -9,13 +9,14 @@ const NAV_ITEMS: { id: ViewId; label: string; icon: string }[] = [
   { id: 'catalog', label: 'Catalog', icon: '📦' },
   { id: 'manage', label: 'Manage Models', icon: '🗂️' },
   { id: 'chat', label: 'Chat', icon: '💬' },
+  { id: 'embeddings', label: 'Embeddings', icon: '🧬' },
+  { id: 'transcribe', label: 'Transcribe', icon: '🎙️' },
   { id: 'server', label: 'Local Server', icon: '🌐' }
 ]
 
 function Sidebar({ active, onChange }: Props): React.JSX.Element {
   return (
     <nav className="sidebar">
-      <div className="sidebar-title">FL Studio</div>
       {NAV_ITEMS.map((item) => (
         <button
           key={item.id}

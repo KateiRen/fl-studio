@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type {
   ChatMessage,
   ConversationSummary,
@@ -6,6 +6,7 @@ import type {
   ModelSummary,
   StoredMessage
 } from '@shared/types'
+import { filterChatModels, filterEmbeddingModels } from '../modelCategories'
 
 function ChatView(): React.JSX.Element {
   const [loadedModels, setLoadedModels] = useState<ModelSummary[]>([])
@@ -29,9 +30,23 @@ function ChatView(): React.JSX.Element {
     const all = await window.api.foundry.listModels()
     const loaded = all.filter((m) => m.loaded)
     setLoadedModels(loaded)
-    if (!selectedModelId && loaded.length > 0) setSelectedModelId(loaded[0].id)
-    if (!embedModelId && loaded.length > 0) setEmbedModelId(loaded[0].id)
+    // Pick sensible defaults instead of always defaulting both dropdowns to
+    // loaded[0]: an embeddings model can't do chat, and a chat model can't
+    // generate usable embeddings, so defaulting both to the same model
+    // silently breaks RAG (ingestion/retrieval fail or return garbage, and
+    // the document context never reaches the chat model).
+    if (!selectedModelId) {
+      const chatCandidate = filterChatModels(loaded)[0]
+      if (chatCandidate) setSelectedModelId(chatCandidate.id)
+    }
+    if (!embedModelId) {
+      const embedCandidate = filterEmbeddingModels(loaded)[0]
+      if (embedCandidate) setEmbedModelId(embedCandidate.id)
+    }
   }, [selectedModelId, embedModelId])
+
+  const chatModelOptions = useMemo(() => filterChatModels(loadedModels), [loadedModels])
+  const embedModelOptions = useMemo(() => filterEmbeddingModels(loadedModels), [loadedModels])
 
   const refreshConversations = useCallback(async () => {
     const list = await window.api.history.listConversations()
@@ -84,13 +99,14 @@ function ChatView(): React.JSX.Element {
     const text = input.trim()
     setInput('')
 
-    const conversationId = await ensureConversation(text)
+    const conversationId = await ensureConversation(text || 'Chat')
     const priorMessages: ChatMessage[] = messages.map((m) => ({ role: m.role, content: m.content }))
     const nextMessages: ChatMessage[] = [...priorMessages, { role: 'user', content: text }]
 
+    const echoId = Date.now()
     setMessages((prev) => [
       ...prev,
-      { id: Date.now(), conversationId, role: 'user', content: text, createdAt: Date.now() }
+      { id: echoId, conversationId, role: 'user', content: text, createdAt: Date.now() }
     ])
 
     const requestId = crypto.randomUUID()
@@ -116,6 +132,9 @@ function ChatView(): React.JSX.Element {
           createdAt: Date.now()
         }
       ])
+      if (result.ragWarning) {
+        setError(`Document context could not be retrieved: ${result.ragWarning}`)
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
     } finally {
@@ -193,16 +212,20 @@ function ChatView(): React.JSX.Element {
       <div className="chat-main">
         <div className="chat-header">
           <select value={selectedModelId} onChange={(e) => setSelectedModelId(e.target.value)}>
-            {loadedModels.length === 0 && <option value="">No models loaded</option>}
-            {loadedModels.map((m) => (
+            {chatModelOptions.length === 0 && <option value="">No chat models loaded</option>}
+            {chatModelOptions.map((m) => (
               <option key={m.id} value={m.id}>
                 {m.displayName}
               </option>
             ))}
           </select>
           <select value={embedModelId} onChange={(e) => setEmbedModelId(e.target.value)}>
-            <option value="">Embedding model (for documents)</option>
-            {loadedModels.map((m) => (
+            <option value="">
+              {embedModelOptions.length === 0
+                ? 'No embedding models loaded'
+                : 'Embedding model (for documents)'}
+            </option>
+            {embedModelOptions.map((m) => (
               <option key={m.id} value={m.id}>
                 {m.displayName}
               </option>
@@ -224,8 +247,7 @@ function ChatView(): React.JSX.Element {
         )}
 
         <div
-          ref={scrollRef}
-          className={`chat-messages ${isDragOver ? 'drag-over' : ''}`}
+          className={`chat-dropzone ${isDragOver ? 'drag-over' : ''}`}
           onDragOver={(e) => {
             e.preventDefault()
             setIsDragOver(true)
@@ -233,11 +255,15 @@ function ChatView(): React.JSX.Element {
           onDragLeave={() => setIsDragOver(false)}
           onDrop={handleDrop}
         >
+          <span className="muted">
+            📄 Drop a .txt, .md, .pdf, or .docx file here to chat about its contents. Pictures
+            aren’t supported — the local model can’t see images.
+          </span>
+        </div>
+
+        <div ref={scrollRef} className="chat-messages">
           {messages.length === 0 && !isStreaming && (
-            <p className="muted chat-empty">
-              Load a model in the Catalog tab, then start chatting. Drag a .txt, .md, .pdf, or .docx
-              file here to chat about its contents.
-            </p>
+            <p className="muted chat-empty">Load a model in the Catalog tab, then start chatting.</p>
           )}
           {messages.map((m) => (
             <div key={m.id} className={`chat-bubble ${m.role}`}>
@@ -251,7 +277,6 @@ function ChatView(): React.JSX.Element {
               <div className="chat-content">{streamingText || '…'}</div>
             </div>
           )}
-          {isDragOver && <div className="drop-overlay">Drop file to add to this chat</div>}
         </div>
 
         <div className="chat-input-row">

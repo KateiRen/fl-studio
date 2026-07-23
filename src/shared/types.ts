@@ -18,6 +18,8 @@ export interface ModelSummary {
   loaded: boolean
   supportsToolCalling?: boolean | null
   contextLength?: number | null
+  inputModalities?: string | null
+  outputModalities?: string | null
 }
 
 export interface EpStatus {
@@ -39,9 +41,23 @@ export interface EpRegisterProgressEvent {
 
 export type ChatRole = 'system' | 'user' | 'assistant'
 
+export interface ChatTextPart {
+  type: 'text'
+  text: string
+}
+
+export interface ChatImagePart {
+  type: 'image_url'
+  image_url: { url: string }
+}
+
+/** A single part of a multimodal (vision-language) chat message. */
+export type ChatContentPart = ChatTextPart | ChatImagePart
+
 export interface ChatMessage {
   role: ChatRole
-  content: string
+  /** Plain text for text-only models, or a list of parts (text + image_url) for vision-language models. */
+  content: string | ChatContentPart[]
 }
 
 export interface ChatSettings {
@@ -112,4 +128,18 @@ export interface IngestResult {
   documentId: string
   documentName: string
   chunkCount: number
+}
+
+export interface TranscribeSendRequest {
+  requestId: string
+  modelId: string
+  filePath: string
+}
+
+export interface TranscribeChunkEvent {
+  requestId: string
+  delta?: string
+  done: boolean
+  error?: string
+  stopped?: boolean
 }

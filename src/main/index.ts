@@ -9,6 +9,7 @@ let mainWindow: BrowserWindow | null = null
 function createWindow(): void {
   // Create the browser window.
   mainWindow = new BrowserWindow({
+    title: 'Foundry Local Explorer',
     width: 1280,
     height: 800,
     show: false,

@@ -10,7 +10,9 @@ import type {
   IngestResult,
   ModelSummary,
   ServerStatus,
-  StoredMessage
+  StoredMessage,
+  TranscribeChunkEvent,
+  TranscribeSendRequest
 } from '@shared/types'
 
 export interface FlStudioApi {
@@ -31,7 +33,9 @@ export interface FlStudioApi {
     onEpRegisterProgress: (callback: (event: EpRegisterProgressEvent) => void) => () => void
   }
   chat: {
-    send: (request: ChatSendRequest) => Promise<{ ok: true; content: string }>
+    send: (
+      request: ChatSendRequest
+    ) => Promise<{ ok: true; content: string; ragWarning?: string }>
     stop: (requestId: string) => Promise<{ ok: true }>
     onChunk: (callback: (event: ChatChunkEvent) => void) => () => void
   }
@@ -50,6 +54,14 @@ export interface FlStudioApi {
     ) => Promise<IngestResult>
     listDocuments: (conversationId: string) => Promise<DocumentSummary[]>
     removeDocument: (conversationId: string, documentId: string) => Promise<void>
+  }
+  embeddings: {
+    generate: (modelId: string, texts: string[]) => Promise<number[][]>
+  }
+  audio: {
+    transcribe: (request: TranscribeSendRequest) => Promise<{ ok: true; text: string }>
+    stop: (requestId: string) => Promise<{ ok: true }>
+    onChunk: (callback: (event: TranscribeChunkEvent) => void) => () => void
   }
   getPathForFile: (file: File) => string
 }

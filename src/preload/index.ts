@@ -3,7 +3,9 @@ import type {
   ChatChunkEvent,
   ChatSendRequest,
   DownloadProgressEvent,
-  EpRegisterProgressEvent
+  EpRegisterProgressEvent,
+  TranscribeChunkEvent,
+  TranscribeSendRequest
 } from '@shared/types'
 
 // Custom APIs for renderer
@@ -60,6 +62,19 @@ const api = {
       ipcRenderer.invoke('rag:listDocuments', conversationId),
     removeDocument: (conversationId: string, documentId: string) =>
       ipcRenderer.invoke('rag:removeDocument', conversationId, documentId)
+  },
+  embeddings: {
+    generate: (modelId: string, texts: string[]) =>
+      ipcRenderer.invoke('embed:generate', modelId, texts)
+  },
+  audio: {
+    transcribe: (request: TranscribeSendRequest) => ipcRenderer.invoke('audio:transcribe', request),
+    stop: (requestId: string) => ipcRenderer.invoke('audio:stop', requestId),
+    onChunk: (callback: (event: TranscribeChunkEvent) => void) => {
+      const listener = (_e: unknown, data: TranscribeChunkEvent): void => callback(data)
+      ipcRenderer.on('audio:chunk', listener)
+      return () => ipcRenderer.removeListener('audio:chunk', listener)
+    }
   },
   getPathForFile: (file: File) => webUtils.getPathForFile(file)
 }

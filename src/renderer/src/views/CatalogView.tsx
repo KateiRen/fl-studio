@@ -14,6 +14,7 @@ function CatalogView(): React.JSX.Element {
   const [taskFilter, setTaskFilter] = useState<string>('ALL')
   const [search, setSearch] = useState('')
   const [epRegisterProgress, setEpRegisterProgress] = useState<Record<string, number>>({})
+  const [loadingModelId, setLoadingModelId] = useState<string | null>(null)
 
   const refreshModels = useCallback(async () => {
     const list = await window.api.foundry.listModels()
@@ -159,11 +160,14 @@ function CatalogView(): React.JSX.Element {
   }
 
   async function handleLoad(modelId: string): Promise<void> {
+    setLoadingModelId(modelId)
     try {
       await window.api.foundry.loadModel(modelId)
       await refreshModels()
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setLoadingModelId(null)
     }
   }
 
@@ -227,6 +231,7 @@ function CatalogView(): React.JSX.Element {
               model={m}
               matchesHardware={matchesHardware(m)}
               loadable={isLoadable(m)}
+              isLoading={loadingModelId === m.id}
               downloadProgress={progress[m.id]}
               onDownload={handleDownload}
               onLoad={handleLoad}
