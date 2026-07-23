@@ -1,4 +1,4 @@
-# Foundry Local Studio (inoffical)
+# Foundry Local Explorer
 
 When running AI models on your local machine - everybody thinks of [ollama](https://ollama.com/) or [LM Studio](https://lmstudio.ai/) first. Both tools serve everybody from AI-consumer, hobbyist to developer.
 Microsoft [Foundry Local](https://learn.microsoft.com/azure/ai-foundry/foundry-local/) on the other hand is the versatile local AI SDK platform developers use to embed and ship local AI capabilities with their cross-plattform apps.
